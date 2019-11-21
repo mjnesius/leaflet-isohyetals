@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+<!-- see https://turfjs.org/docs/#isobands and https://github.com/d3/d3-contour-->
 <html>
 <head>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
@@ -13,6 +14,9 @@
   <script src="https://unpkg.com/esri-leaflet@2.3.2/dist/esri-leaflet.js"
   integrity="sha512-6LVib9wGnqVKIClCduEwsCub7iauLXpwrd5njR2J507m3A2a4HXJDLMiSZzjcksag3UluIfuW1KzuWVI5n/cuQ=="
   crossorigin=""></script>
+
+  <!--  d3 contour library ==> creates a d3 global with a contours() method-->
+  <script src="https://d3js.org/d3-contour.v1.min.js"></script>
         <title>isohyetals</title>
 <style>
 body {
