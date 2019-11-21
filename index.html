@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.6.0/dist/leaflet.css"
+        integrity="sha512-xwE/Az9zrjBIphAcBb3F6JVqxf46+CDLwfLMHloNu6KEQCAWi6HcDUbeOfBIptF7tcCzusKFjFw2yuvEpDL9wQ=="
+        crossorigin="" />
+    
+    <script src="https://unpkg.com/leaflet@1.6.0/dist/leaflet.js"
+        integrity="sha512-gZwIG9x3wUXg2hdXF6+rVkLF/0Vi9U8D2Ntg4Ga5I5BZpVkVxlJWbSQtXPSiUTtC0TjtGOmxa1AJPuV0CPthew=="
+        crossorigin=""></script>
+    <!-- Load Esri Leaflet from CDN -->
+  <script src="https://unpkg.com/esri-leaflet@2.3.2/dist/esri-leaflet.js"
+  integrity="sha512-6LVib9wGnqVKIClCduEwsCub7iauLXpwrd5njR2J507m3A2a4HXJDLMiSZzjcksag3UluIfuW1KzuWVI5n/cuQ=="
+  crossorigin=""></script>
+        <title>isohyetals</title>
+<style>
+body {
+    padding: 0;
+    margin: 0;
+}
+html, body, #mapid {
+    height: 100%;
+    width: 100vw;
+}
+.date {left: 40%;
+    vertical-align: top;
+    text-align: center;
+    position: absolute;
+    display: flex;
+    align-items: center;
+    z-index: 999;
+    white-space: pre-wrap;
+
+}
+
+@media only screen and (max-width:800px) {
+  /* For tablets: */
+  .main {
+    width: 80%;
+    padding: 0;
+  }
+  .right {
+    width: 100%;
+  }
+}
+@media only screen and (max-width:500px) {
+  /* For mobile phones: */
+  .menu, .main, .right {
+    width: 100%;
+  }
+}
+</style>
+</head>
+<body class="map" id="map">
+    
+        <div class="date">
+           <font color="white"><b>Start Date  </b> </font>
+        <input style="white-space: normal;" type="date" id="start">
+        <font color="white"><b>   End Date  </b> </font>
+        <input style="white-space: normal;" type="date" id="end">
+        <button style="height: 22px" type="button" onclick="getRainData()"> Submit
+        </div>
+        
+    
+    
+    <div class="map" id="mapid">
+
+    </div>
+    
+    
+</body>
+</html>
+
+
+<script>
+    var mymap = L.map('mapid').setView([30.45, -84.31], 13);
+
+    L.esri.basemapLayer('DarkGray').addTo(mymap)
+
+    function getRainData() {
+        var startDate = document.getElementById("start").value;
+        var endDate = document.getElementById("end").value;
+        console.log( startDate + " to " + endDate);
+
+        if (startDate === "" || endDate === "") {
+            alert("Please enter a start and end date")
+            return;
+        }
+        if (startDate > endDate){
+            alert("Please enter a start date that is before or equal to the end date")
+            return;
+        }
+    }
+</script>
+
+
