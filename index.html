@@ -64,25 +64,16 @@ html, body, #mapid {
 </style>
 </head>
 <body class="map" id="map">
-    
-        <div class="date " >
-           <font color="white"><b>Start Date  </b> </font>
-        <input style="white-space: normal;" type="date" id="start">
-        <font color="white"><b>   End Date  </b> </font>
-        <input style="white-space: normal;" type="date" id="end">
-        <button style="height: 22px; margin-left: 5px; text-align: center" type="button" onclick="runAnalysis()"> Submit
-        </div>
-        
-    
-    
-    <div class="map" id="mapid">
-
+  <div class="date " >
+    <font color="white"><b>Start Date  </b> </font>
+    <input style="white-space: normal;" type="date" id="start">
+    <font color="white"><b>   End Date  </b> </font>
+    <input style="white-space: normal;" type="date" id="end">
+    <button style="height: 22px; margin-left: 5px; text-align: center" type="button" onclick="runAnalysis()"> Submit
     </div>
-    
-    
+  <div class="map" id="mapid"></div>  
 </body>
 </html>
-
 
 <script>
     var mymap = L.map('mapid').setView([30.45, -84.31], 13);
@@ -94,7 +85,19 @@ html, body, #mapid {
     const oneRainSysKey = "79cb5383-a4cb-467c-9e29-fe1ce57b6497";
     const baseOneRainURL = "http://cs-022-exchange.onerain.com:8080/OneRain/DataAPI?method=GetSensorData";
     const baseNwfwmdURL = "http://aquarius-web.nwfwmd.state.fl.us/Data/DatasetGrid?dataset=";
+    const oneRainGeoJSON ="https://tallahassee.onerain.com/export/map/geojson.php?method=sensors&period=1440&unit=MINUTE&sensor_class=10&view=9c0b7443-44e5-44da-af3b-f8a30145688b"
+    var geoJSON = getGeoJSON(oneRainGeoJSON)
+    geoJSON.then( geoJSON => {
+      console.log("geojson: " + geoJSON);
+      L.geoJSON(geoJSON, {
+        style: function (feature) {
+            return {color: feature.properties.color};
+        }
+      }).bindPopup(function (layer) {
+          return layer.feature.properties.description;
+      }).addTo(map);
 
+    });
       // the list is [or_site_id, or_sensor_id]
     const oneRainGetDict = {
       "STREETS AND DRAINAGE (CITY ID# 300)": ["5", "1"],
@@ -138,7 +141,10 @@ html, body, #mapid {
             "RIVER SINK TOWER - RAIN": 762899,
             "District HQ Rain": 760892
         }
-
+    async function getGeoJSON(url){
+      return fetch(url)
+        .then(response =>  response.json() )
+    }    
     async function getOneRain(url){
       return fetch(url, {
         method: 'GET',
@@ -153,13 +159,7 @@ html, body, #mapid {
       
     } 
     async function getNWFWMD(url) {
-        return fetch(url, {
-          method: 'GET',
-          mode: 'cors',
-          headers: {
-            'Content-Type': 'application/json'
-          }
-        })
+        return fetch(url)
           .then(response => response.json())
           .then(json => { console.log("json: ", JSON.stringify(json)) });
 
@@ -191,7 +191,7 @@ html, body, #mapid {
         //   var reqURL =  baseOneRainURL + queryTemplate;
         //   getOneRain(reqURL);
         // }
-
+        
       }
 </script>
 
