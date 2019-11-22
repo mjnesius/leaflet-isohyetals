@@ -1,5 +1,8 @@
 <!DOCTYPE html>
-<!-- see https://turfjs.org/docs/#isobands and https://github.com/d3/d3-contour-->
+<!-- see https://turfjs.org/docs/#isobands and https://github.com/d3/d3-contour 
+
+  CORS isn't enabled on the data servers  :(
+-->
 <html>
 <head>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
@@ -67,7 +70,7 @@ html, body, #mapid {
         <input style="white-space: normal;" type="date" id="start">
         <font color="white"><b>   End Date  </b> </font>
         <input style="white-space: normal;" type="date" id="end">
-        <button style="height: 22px; margin-left: 5px; text-align: center" type="button" onclick="getRainData()"> Submit
+        <button style="height: 22px; margin-left: 5px; text-align: center" type="button" onclick="runAnalysis()"> Submit
         </div>
         
     
@@ -90,6 +93,7 @@ html, body, #mapid {
     var nwfwmdDataDict = {};
     const oneRainSysKey = "79cb5383-a4cb-467c-9e29-fe1ce57b6497";
     const baseOneRainURL = "http://cs-022-exchange.onerain.com:8080/OneRain/DataAPI?method=GetSensorData";
+    const baseNwfwmdURL = "http://aquarius-web.nwfwmd.state.fl.us/Data/DatasetGrid?dataset=";
 
       // the list is [or_site_id, or_sensor_id]
     const oneRainGetDict = {
@@ -101,7 +105,41 @@ html, body, #mapid {
       "HILAMAN GOLF COURSE (CITY ID# 400)": ["3", "1"]
     }
 
-    async function getRequest(url){
+    /*note: the dataset IDs used with http://aquarius-web.nwfwmd.state.fl.us don't match the NWF_ID
+      ##  sensors without a real-time data feed (the numbers below tie to a specific data feed)
+      ##      Cap Cir Old Landfill, Lake Iamonia, John Knox Pond, St Marks @ San Marco, River Sink Tower, District HQ
+  
+      # Grade codes: -2 is unusable, -3 = GAP, 0 = UNDEF
+      # "Approvale codes:  -1 is unspecified,  0 is undefined, 1 = working, 2 = in review, 3 = approved, 4 = real time
+    # RETURNED TIMESTAMPS ARE IN GMT */
+    const nwfwmdGetDict ={
+            "CAPITAL CIRCLE, OLD LANDFILL": 760965,
+            "LAKE JACKSON FACILITY": 762684,
+            "FOREST SERVICE WORK CENTER - BLOXHAM CUTOFF": 761627,
+            "MICCOSUKEE PARK": 761626,
+            "LAKE JACKSON - MILLER LANDING ROAD": 761623,
+            "LAKE IAMONIA OUTFALL @ MERIDIAN RD": 761595,
+            "APALACHEE REGIONAL PARK": 761596,
+            "BANNERMAN ROAD NEAR THOMASVILLE RD": 761600,
+            "COMMONWEALTH BLVD, WEST - LEON COUNTY": 761604,
+            "FT BRADEN RAINFALL 827": 761634,
+            "LAKE KANTURK OUTFALL @ CENTERVILLE RD": 761637,
+            "LAKE IAMONIA": 761547,
+            "HERRON STEEL SITE, SILVER LAKE RD.": 761607,
+            "ABUNDANT LIFE FELLOWSHIP": 761601,
+            "JOHN KNOX POND, MEGGINNIS TRIBUTARY": 760962,
+            "WEMBLEY WAY, EASTGATE NEIGHBORHOOD": 761613,
+            "STILL CREEK @ CAPITOLA RD": 761783,
+            "MILITARY TRAIL NEAR NATURAL BRIDGE RD.": 761608,
+            "TUCK PROPERTY, N. CENTERVILLE RD.": 761628,
+            "CHOWKEEBIN NENE NEAR MAGNOLIA DR.": 761602,
+            "WAKULLA SPRINGS STATE PARK": 761625,
+            "ST. MARKS RIVER @ SAN MARCOS DE APALACHEE S.P.": 762890,
+            "RIVER SINK TOWER - RAIN": 762899,
+            "District HQ Rain": 760892
+        }
+
+    async function getOneRain(url){
       return fetch(url, {
         method: 'GET',
         headers: {
@@ -113,9 +151,21 @@ html, body, #mapid {
             new window.DOMParser()).parseFromString(text,"text/xml")})
             .then(xml => console.log("xml response: " + xml))
       
-    }   
+    } 
+    async function getNWFWMD(url) {
+        return fetch(url, {
+          method: 'GET',
+          mode: 'cors',
+          headers: {
+            'Content-Type': 'application/json'
+          }
+        })
+          .then(response => response.json())
+          .then(json => { console.log("json: ", JSON.stringify(json)) });
 
-    function getRainData() {
+      }  
+
+    function runAnalysis() {
         var startDate = document.getElementById("start").value ;
         var endDate = document.getElementById("end").value ;
         console.log(startDate + " to " + endDate);
@@ -129,14 +179,18 @@ html, body, #mapid {
           return;
         }
 
-        for (var sensor in oneRainGetDict) {
+        for (var sensor in nwfwmdGetDict) {
           //`Fifteen is ${five + ten} and not ${2 * five + ten}.`)
-          var queryTemplate = `&or_site_id=${oneRainGetDict[sensor][0]}&or_sensor_id=${oneRainGetDict[sensor][1]}&data_start=${startDate} 00:00&data_end=${endDate} 23:59&system_key=${oneRainSysKey}&tz=edt`
-          var reqURL =  baseOneRainURL + queryTemplate;
-          getRequest(reqURL);
-          
-          
+          queryTemplate=`${nwfwmdGetDict[sensor]}&interval=Custom&date=${startDate} 00:00&endDate=${endDate} 23:59&timezone=-300&sort=TimeStamp-desc`;
+          getNWFWMD(baseNwfwmdURL + queryTemplate);
         }
+
+        // for (var sensor in oneRainGetDict) {
+        //   //`Fifteen is ${five + ten} and not ${2 * five + ten}.`)
+        //   var queryTemplate = `&or_site_id=${oneRainGetDict[sensor][0]}&or_sensor_id=${oneRainGetDict[sensor][1]}&data_start=${startDate} 00:00&data_end=${endDate} 23:59&system_key=${oneRainSysKey}&tz=edt`
+        //   var reqURL =  baseOneRainURL + queryTemplate;
+        //   getOneRain(reqURL);
+        // }
 
       }
 </script>
