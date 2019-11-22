@@ -38,6 +38,7 @@ html, body, #mapid {
     align-items: center;
     z-index: 999;
     white-space: pre-wrap;
+    margin-top: 10px
 
 }
 
@@ -61,12 +62,12 @@ html, body, #mapid {
 </head>
 <body class="map" id="map">
     
-        <div class="date">
+        <div class="date " >
            <font color="white"><b>Start Date  </b> </font>
         <input style="white-space: normal;" type="date" id="start">
         <font color="white"><b>   End Date  </b> </font>
         <input style="white-space: normal;" type="date" id="end">
-        <button style="height: 22px" type="button" onclick="getRainData()"> Submit
+        <button style="height: 22px; margin-left: 5px; text-align: center" type="button" onclick="getRainData()"> Submit
         </div>
         
     
@@ -85,20 +86,59 @@ html, body, #mapid {
 
     L.esri.basemapLayer('DarkGray').addTo(mymap)
 
+    var oneRainDataDict = {};
+    var nwfwmdDataDict = {};
+    const oneRainSysKey = "79cb5383-a4cb-467c-9e29-fe1ce57b6497";
+    const baseOneRainURL = "http://cs-022-exchange.onerain.com:8080/OneRain/DataAPI?method=GetSensorData";
+
+      // the list is [or_site_id, or_sensor_id]
+    const oneRainGetDict = {
+      "STREETS AND DRAINAGE (CITY ID# 300)": ["5", "1"],
+      "JAKE GAITHER GOLF COURSE (CITY ID# 500)": ["2", "1"],
+      "TALLAHASSEE CITY HALL (CITY ID# 100)": ["4", "1"],
+      "SENIOR CITIZEN CENTER (CITY ID# 200)": ["6", "1"],
+      "SOUTHWOOD GOLF COURSE (CITY ID# 600)": ["1", "1"],
+      "HILAMAN GOLF COURSE (CITY ID# 400)": ["3", "1"]
+    }
+
+    async function getRequest(url){
+      return fetch(url, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'text/plain'
+        }
+      })
+        .then(response =>  response.text())
+          .then(text => {console.log("text: ", text);(
+            new window.DOMParser()).parseFromString(text,"text/xml")})
+            .then(xml => console.log("xml response: " + xml))
+      
+    }   
+
     function getRainData() {
-        var startDate = document.getElementById("start").value;
-        var endDate = document.getElementById("end").value;
-        console.log( startDate + " to " + endDate);
+        var startDate = document.getElementById("start").value ;
+        var endDate = document.getElementById("end").value ;
+        console.log(startDate + " to " + endDate);
 
         if (startDate === "" || endDate === "") {
-            alert("Please enter a start and end date")
-            return;
+          alert("Please enter a start and end date")
+          return;
         }
-        if (startDate > endDate){
-            alert("Please enter a start date that is before or equal to the end date")
-            return;
+        if (startDate > endDate) {
+          alert("Please enter a start date that is before or equal to the end date")
+          return;
         }
-    }
+
+        for (var sensor in oneRainGetDict) {
+          //`Fifteen is ${five + ten} and not ${2 * five + ten}.`)
+          var queryTemplate = `&or_site_id=${oneRainGetDict[sensor][0]}&or_sensor_id=${oneRainGetDict[sensor][1]}&data_start=${startDate} 00:00&data_end=${endDate} 23:59&system_key=${oneRainSysKey}&tz=edt`
+          var reqURL =  baseOneRainURL + queryTemplate;
+          getRequest(reqURL);
+          
+          
+        }
+
+      }
 </script>
 
 
