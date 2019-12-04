@@ -45,6 +45,16 @@ html, body, #mapid {
 
 }
 
+#info-pane {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    z-index: 1000;
+    padding: 1em;
+    background: white;
+  }
+
+
 @media only screen and (max-width:800px) {
   /* For tablets: */
   .main {
@@ -72,21 +82,26 @@ html, body, #mapid {
     <button style="height: 22px; margin-left: 5px; text-align: center" type="button" onclick="runAnalysis()"> Submit
     </div>
   <div class="map" id="mapid"></div>  
+  <div id="info-pane" class="leaflet-bar">
+    <label>
+    </label>
+  </div>
 </body>
 </html>
 
 <script>
     var mymap = L.map('mapid').setView([30.45, -84.31], 13);
+    
 
-    L.esri.basemapLayer('DarkGray').addTo(mymap)
+    L.esri.basemapLayer('DarkGray').addTo(mymap);
+    var rainService = L.esri.GP.service({
+        url: 'https://cotinter.leoncountyfl.gov/cotinter/rest/services/GeoProcessing/FetchRainData/GPServer/FetchRainData'
+      });
+
 
     var oneRainDataDict = {};
     var nwfwmdDataDict = {};
-    const oneRainSysKey = "79cb5383-a4cb-467c-9e29-fe1ce57b6497";
-    const baseOneRainURL = "http://cs-022-exchange.onerain.com:8080/OneRain/DataAPI?method=GetSensorData";
-    const baseNwfwmdURL = "http://aquarius-web.nwfwmd.state.fl.us/Data/DatasetGrid?dataset=";
-    const oneRainGeoJSON ="https://tallahassee.onerain.com/export/map/geojson.php?method=sensors&period=1440&unit=MINUTE&sensor_class=10&view=9c0b7443-44e5-44da-af3b-f8a30145688b"
-    var geoJSON = getGeoJSON(oneRainGeoJSON)
+
     geoJSON.then( geoJSON => {
       console.log("geojson: " + geoJSON);
       L.geoJSON(geoJSON, {
@@ -98,7 +113,7 @@ html, body, #mapid {
       }).addTo(map);
 
     });
-      // the list is [or_site_id, or_sensor_id]
+
     const oneRainGetDict = {
       "STREETS AND DRAINAGE (CITY ID# 300)": ["5", "1"],
       "JAKE GAITHER GOLF COURSE (CITY ID# 500)": ["2", "1"],
@@ -108,13 +123,6 @@ html, body, #mapid {
       "HILAMAN GOLF COURSE (CITY ID# 400)": ["3", "1"]
     }
 
-    /*note: the dataset IDs used with http://aquarius-web.nwfwmd.state.fl.us don't match the NWF_ID
-      ##  sensors without a real-time data feed (the numbers below tie to a specific data feed)
-      ##      Cap Cir Old Landfill, Lake Iamonia, John Knox Pond, St Marks @ San Marco, River Sink Tower, District HQ
-  
-      # Grade codes: -2 is unusable, -3 = GAP, 0 = UNDEF
-      # "Approvale codes:  -1 is unspecified,  0 is undefined, 1 = working, 2 = in review, 3 = approved, 4 = real time
-    # RETURNED TIMESTAMPS ARE IN GMT */
     const nwfwmdGetDict ={
             "CAPITAL CIRCLE, OLD LANDFILL": 760965,
             "LAKE JACKSON FACILITY": 762684,
@@ -144,30 +152,12 @@ html, body, #mapid {
     async function getGeoJSON(url){
       return fetch(url)
         .then(response =>  response.json() )
-    }    
-    async function getOneRain(url){
-      return fetch(url, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'text/plain'
-        }
-      })
-        .then(response =>  response.text())
-          .then(text => {console.log("text: ", text);(
-            new window.DOMParser()).parseFromString(text,"text/xml")})
-            .then(xml => console.log("xml response: " + xml))
-      
     } 
-    async function getNWFWMD(url) {
-        return fetch(url)
-          .then(response => response.json())
-          .then(json => { console.log("json: ", JSON.stringify(json)) });
-
-      }  
 
     function runAnalysis() {
-        var startDate = document.getElementById("start").value ;
-        var endDate = document.getElementById("end").value ;
+        infoPane.innerHTML = 'working...';
+        var startDate = new Date(document.getElementById("start").value).toLocaleString("en-US", { timeZone: "America/New_York" });;
+        var endDate = new Date(document.getElementById("end").value).toLocaleString("en-US", { timeZone: "America/New_York" });
         console.log(startDate + " to " + endDate);
 
         if (startDate === "" || endDate === "") {
@@ -178,20 +168,21 @@ html, body, #mapid {
           alert("Please enter a start date that is before or equal to the end date")
           return;
         }
+        var rainTask = rainService.createTask();
+        rainTask.on('initialized', function () {
+          rainTask.setParam('Start_Date', startDate.getUTCMilliseconds());
+          rainTask.setParam('End_Date', endDate.getUTCMilliseconds());
+          rainTask.setOutputParam('Output_String');
+          rainTask.run(function (error, response, raw) {
+            //infoPane.innerHTML = 'click on the map to calculate<br>1 and 2 minute drivetimes';
+            if(error){
+              infoPane.innerHTML = JSON.stringify(error);
+              return;
+            }
+            infoPane.innerHTML = response + "\n\n" + raw;
+          });
+        });
 
-        for (var sensor in nwfwmdGetDict) {
-          //`Fifteen is ${five + ten} and not ${2 * five + ten}.`)
-          queryTemplate=`${nwfwmdGetDict[sensor]}&interval=Custom&date=${startDate} 00:00&endDate=${endDate} 23:59&timezone=-300&sort=TimeStamp-desc`;
-          getNWFWMD(baseNwfwmdURL + queryTemplate);
-        }
-
-        // for (var sensor in oneRainGetDict) {
-        //   //`Fifteen is ${five + ten} and not ${2 * five + ten}.`)
-        //   var queryTemplate = `&or_site_id=${oneRainGetDict[sensor][0]}&or_sensor_id=${oneRainGetDict[sensor][1]}&data_start=${startDate} 00:00&data_end=${endDate} 23:59&system_key=${oneRainSysKey}&tz=edt`
-        //   var reqURL =  baseOneRainURL + queryTemplate;
-        //   getOneRain(reqURL);
-        // }
-        
       }
 </script>
 
