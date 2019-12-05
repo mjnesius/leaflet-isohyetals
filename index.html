@@ -1,39 +1,28 @@
 <!DOCTYPE html>
-<!-- see https://turfjs.org/docs/#isobands and https://github.com/d3/d3-contour 
-
-  CORS isn't enabled on the data servers  :(
--->
 <html>
 <head>
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.6.0/dist/leaflet.css"
-        integrity="sha512-xwE/Az9zrjBIphAcBb3F6JVqxf46+CDLwfLMHloNu6KEQCAWi6HcDUbeOfBIptF7tcCzusKFjFw2yuvEpDL9wQ=="
-        crossorigin="" />
-    
-    <script src="https://unpkg.com/leaflet@1.6.0/dist/leaflet.js"
-        integrity="sha512-gZwIG9x3wUXg2hdXF6+rVkLF/0Vi9U8D2Ntg4Ga5I5BZpVkVxlJWbSQtXPSiUTtC0TjtGOmxa1AJPuV0CPthew=="
-        crossorigin=""></script>
-    <!-- Load Esri Leaflet from CDN -->
-  <script src="https://unpkg.com/esri-leaflet@2.3.2/dist/esri-leaflet.js"
-  integrity="sha512-6LVib9wGnqVKIClCduEwsCub7iauLXpwrd5njR2J507m3A2a4HXJDLMiSZzjcksag3UluIfuW1KzuWVI5n/cuQ=="
-  crossorigin=""></script>
+  <meta charset=utf-8 />
+  <title>isohyetals</title>
+  <meta name='viewport' content='initial-scale=1,maximum-scale=1,user-scalable=no' />
+
+  <!-- Load Leaflet from CDN-->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.2.0/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.2.0"></script>
+
+  <!-- Load Esri Leaflet from CDN -->
+  <script src="https://unpkg.com/esri-leaflet@2.1.1"></script>
+
+  <!-- Esri Leaflet GP -->
+  <script src="https://unpkg.com/esri-leaflet-gp@2.0.3"></script>
 
   <!--  d3 contour library ==> creates a d3 global with a contours() method-->
   <script src="https://d3js.org/d3-contour.v1.min.js"></script>
 
   <!--  turf interpolation library ==> creates a turf global. has featureCollection helper and isobands() method-->
   <script src='https://npmcdn.com/@turf/turf/turf.min.js'></script>
-        <title>isohyetals</title>
+        
 <style>
-body {
-    padding: 0;
-    margin: 0;
-}
-html, body, #mapid {
-    height: 100%;
-    width: 100vw;
-}
-.date {left: 40%;
+    .date {left: 40%;
     vertical-align: top;
     text-align: center;
     position: absolute;
@@ -44,77 +33,159 @@ html, body, #mapid {
     margin-top: 10px
 
 }
+    body {
+      margin:0;
+      padding:0;
+    }
 
-#info-pane {
-    position: absolute;
-    top: 10px;
-    right: 10px;
-    z-index: 1000;
-    padding: 1em;
-    background: white;
-  }
+    #map {
+      position: absolute;
+      top:0;
+      bottom:0;
+      right:0;left:0;
+    }
 
-
-@media only screen and (max-width:800px) {
-  /* For tablets: */
-  .main {
-    width: 80%;
-    padding: 0;
-  }
-  .right {
-    width: 100%;
-  }
+    #info-pane {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      z-index: 1000;
+      padding: 1em;
+      background: white;
+      max-width: 30%;
+    }
+    table {
+  font-family: arial, sans-serif;
+  border-collapse: collapse;
+  width: 100%;
 }
-@media only screen and (max-width:500px) {
-  /* For mobile phones: */
-  .menu, .main, .right {
-    width: 100%;
-  }
+td, th {
+  border: 1px solid #dddddd;
+  text-align: left;
+  padding: 8px;
 }
-</style>
+
+tr:nth-child(even) {
+  background-color: #dddddd;
+}
+  </style>
 </head>
-<body class="map" id="map">
-  <div class="date " >
+<body>
+<div class="date" >
     <font color="white"><b>Start Date  </b> </font>
     <input style="white-space: normal;" type="date" id="start">
     <font color="white"><b>   End Date  </b> </font>
     <input style="white-space: normal;" type="date" id="end">
-    <button style="height: 22px; margin-left: 5px; text-align: center" type="button" onclick="runAnalysis()"> Submit
-    </div>
-  <div class="map" id="mapid"></div>  
-  <div id="info-pane" class="leaflet-bar">
-    <label>
-    </label>
-  </div>
+    <button id="btnRun"style="height: 22px; margin-left: 5px; text-align: center" type="button"> Submit
+ </div>
+<div id="map"></div>
+<div id="info-pane" class="leaflet-bar">
+</div>
+
+<script>
+  document.getElementById('info-pane').innerHTML = '';
+
+  var map = L.map('map').setView([30.45, -84.31], 13);
+
+  L.esri.basemapLayer('DarkGray').addTo(map);
+  var gaugeLayer1 = L.geoJSON().addTo(map);
+  var gpService = L.esri.GP.service({
+    url: "https://cotinter.leoncountyfl.gov/cotinter/rest/services/GeoProcessing/FetchRainData/GPServer/FetchRainData",
+    useCors:false,
+    async: true,
+    timeout: 320000,
+    asyncInterval: 3,
+  });
+  var gpTask = gpService.createTask();
+
+  gpTask.setParam('Start_Date', 1575194400000);
+  gpTask.setParam('End_Date', 1575207000000);
+  gpTask.setOutputParam('Output_String');
+
+  
+  document.getElementById('btnRun').addEventListener("click", () =>{
+    document.getElementById('info-pane').innerHTML = 'fetching rain data, this takes 2-3 minutes...';
+    console.log("click");
+    var startDate = new Date(document.getElementById("start").value).toLocaleString("en-US", { timeZone: "America/New_York" });;
+    var endDate = new Date(document.getElementById("end").value).toLocaleString("en-US", { timeZone: "America/New_York" });
+    console.log(startDate + " to " + endDate);
+    if (startDate === "" || endDate === "") {
+      alert("Please enter a start and end date")
+      return;
+    }
+    if (startDate > endDate) {
+      alert("Please enter a start date that is before or equal to the end date")
+      return;
+    }
+    gpTask.run( (error, response, raw) => {
+      console.log("task ran");
+        //   it is pinging this address for the result
+        //https://cotinter.leoncountyfl.gov/cotinter/rest/services/GeoProcessing/FetchRainData/GPServer/FetchRainData/jobs/j3ad9081eed61437b88728aa0834b7412?f=json
+        if (error) {
+          console.log("error: " + error);
+          document.getElementById('info-pane').innerHTML = JSON.stringify(error);
+          return;
+        }
+        document.getElementById('info-pane').innerHTML = "response: " + JSON.stringify(response.value) + "\n\n" + "raw: " + JSON.stringify(raw.value);
+        return raw.value;
+        //the async task then fetches .../results/{setOutputParam}?f=json
+        //https://cotinter.leoncountyfl.gov/cotinter/rest/services/GeoProcessing/FetchRainData/GPServer/FetchRainData/jobs/j5d13c9fd386648a3867e1eb675d39889/results/undefined?results%2FOutput_String=undefined&f=json
+
+      })
+  }
+    
+  );
+  const geojStationFeatures = fetch("../stationsWGS84.js")
+    .then((res) => res.json())
+    .then( geojStationFeatures =>{
+        console.log(geojStationFeatures);
+        //var gaugeLayer = L.geoJSON().addTo(map);
+        //var geojson = L.geoJSON(geojStationFeatures);
+        console.log(geojStationFeatures);
+        gaugeLayer1.addData(geojStationFeatures);
+        gaugeLayer1.eachLayer((layer)=>{
+          onEachFeature(layer);
+        })
+        // var gaugeLayer = L.geoJSON(geojStationFeatures, {
+        //   onEachFeature: onEachFeature
+        // }).addTo(map);
+
+        //gaugeLayer.addData(geojson);
+        
+
+        var oneRainDataDict = {};
+        var nwfwmdDataDict = {};
+
+        function onEachFeature(layer) {
+
+          if (layer.feature.properties) {
+            var popup = `<h3>${layer.feature.properties.Station_Name}</h2>
+            <table>
+              <tr>
+                <th><b>Total_Rain</b></th>
+                <th>${layer.feature.properties.Total_Rain ? layer.feature.properties.Total_Rain : "null"}</th>
+              </tr>
+              <tr>
+                <td><b>NWF_ID</b></td>
+                <td>${layer.feature.properties.NWF_ID ? layer.feature.properties.NWF_ID : "null"}</td>
+              </tr>
+              <tr>
+                <td><b>SiteID</b></td>
+                <td>${layer.feature.properties.SiteID ? layer.feature.properties.SiteID : "null"}</td>
+              </tr>
+            </table>`
+            layer.bindPopup(popup);
+          }
+        }
+
+      })
+
+</script>
+
 </body>
 </html>
 
-<script>
-    var mymap = L.map('mapid').setView([30.45, -84.31], 13);
-    
-
-    L.esri.basemapLayer('DarkGray').addTo(mymap);
-    var rainService = L.esri.GP.service({
-        url: 'https://cotinter.leoncountyfl.gov/cotinter/rest/services/GeoProcessing/FetchRainData/GPServer/FetchRainData'
-      });
-
-
-    var oneRainDataDict = {};
-    var nwfwmdDataDict = {};
-
-    geoJSON.then( geoJSON => {
-      console.log("geojson: " + geoJSON);
-      L.geoJSON(geoJSON, {
-        style: function (feature) {
-            return {color: feature.properties.color};
-        }
-      }).bindPopup(function (layer) {
-          return layer.feature.properties.description;
-      }).addTo(map);
-
-    });
-
-    const oneRainGetDict = {
+      /* const oneRainGetDict = {
       "STREETS AND DRAINAGE (CITY ID# 300)": ["5", "1"],
       "JAKE GAITHER GOLF COURSE (CITY ID# 500)": ["2", "1"],
       "TALLAHASSEE CITY HALL (CITY ID# 100)": ["4", "1"],
@@ -123,67 +194,31 @@ html, body, #mapid {
       "HILAMAN GOLF COURSE (CITY ID# 400)": ["3", "1"]
     }
 
-    const nwfwmdGetDict ={
-            "CAPITAL CIRCLE, OLD LANDFILL": 760965,
-            "LAKE JACKSON FACILITY": 762684,
-            "FOREST SERVICE WORK CENTER - BLOXHAM CUTOFF": 761627,
-            "MICCOSUKEE PARK": 761626,
-            "LAKE JACKSON - MILLER LANDING ROAD": 761623,
-            "LAKE IAMONIA OUTFALL @ MERIDIAN RD": 761595,
-            "APALACHEE REGIONAL PARK": 761596,
-            "BANNERMAN ROAD NEAR THOMASVILLE RD": 761600,
-            "COMMONWEALTH BLVD, WEST - LEON COUNTY": 761604,
-            "FT BRADEN RAINFALL 827": 761634,
-            "LAKE KANTURK OUTFALL @ CENTERVILLE RD": 761637,
-            "LAKE IAMONIA": 761547,
-            "HERRON STEEL SITE, SILVER LAKE RD.": 761607,
-            "ABUNDANT LIFE FELLOWSHIP": 761601,
-            "JOHN KNOX POND, MEGGINNIS TRIBUTARY": 760962,
-            "WEMBLEY WAY, EASTGATE NEIGHBORHOOD": 761613,
-            "STILL CREEK @ CAPITOLA RD": 761783,
-            "MILITARY TRAIL NEAR NATURAL BRIDGE RD.": 761608,
-            "TUCK PROPERTY, N. CENTERVILLE RD.": 761628,
-            "CHOWKEEBIN NENE NEAR MAGNOLIA DR.": 761602,
-            "WAKULLA SPRINGS STATE PARK": 761625,
-            "ST. MARKS RIVER @ SAN MARCOS DE APALACHEE S.P.": 762890,
-            "RIVER SINK TOWER - RAIN": 762899,
-            "District HQ Rain": 760892
-        }
-    async function getGeoJSON(url){
-      return fetch(url)
-        .then(response =>  response.json() )
-    } 
-
-    function runAnalysis() {
-        infoPane.innerHTML = 'working...';
-        var startDate = new Date(document.getElementById("start").value).toLocaleString("en-US", { timeZone: "America/New_York" });;
-        var endDate = new Date(document.getElementById("end").value).toLocaleString("en-US", { timeZone: "America/New_York" });
-        console.log(startDate + " to " + endDate);
-
-        if (startDate === "" || endDate === "") {
-          alert("Please enter a start and end date")
-          return;
-        }
-        if (startDate > endDate) {
-          alert("Please enter a start date that is before or equal to the end date")
-          return;
-        }
-        var rainTask = rainService.createTask();
-        rainTask.on('initialized', function () {
-          rainTask.setParam('Start_Date', startDate.getUTCMilliseconds());
-          rainTask.setParam('End_Date', endDate.getUTCMilliseconds());
-          rainTask.setOutputParam('Output_String');
-          rainTask.run(function (error, response, raw) {
-            //infoPane.innerHTML = 'click on the map to calculate<br>1 and 2 minute drivetimes';
-            if(error){
-              infoPane.innerHTML = JSON.stringify(error);
-              return;
-            }
-            infoPane.innerHTML = response + "\n\n" + raw;
-          });
-        });
-
-      }
-</script>
+    const nwfwmdGetDict = {
+        "CAPITAL CIRCLE, OLD LANDFILL": 760965,
+        "LAKE JACKSON FACILITY": 762684,
+        "FOREST SERVICE WORK CENTER - BLOXHAM CUTOFF": 761627,
+        "MICCOSUKEE PARK": 761626,
+        "LAKE JACKSON - MILLER LANDING ROAD": 761623,
+        "LAKE IAMONIA OUTFALL @ MERIDIAN RD": 761595,
+        "APALACHEE REGIONAL PARK": 761596,
+        "BANNERMAN ROAD NEAR THOMASVILLE RD": 761600,
+        "COMMONWEALTH BLVD, WEST - LEON COUNTY": 761604,
+        "FT BRADEN RAINFALL 827": 761634,
+        "LAKE KANTURK OUTFALL @ CENTERVILLE RD": 761637,
+        "LAKE IAMONIA": 761547,
+        "HERRON STEEL SITE, SILVER LAKE RD.": 761607,
+        "ABUNDANT LIFE FELLOWSHIP": 761601,
+        "JOHN KNOX POND, MEGGINNIS TRIBUTARY": 760962,
+        "WEMBLEY WAY, EASTGATE NEIGHBORHOOD": 761613,
+        "STILL CREEK @ CAPITOLA RD": 761783,
+        "MILITARY TRAIL NEAR NATURAL BRIDGE RD.": 761608,
+        "TUCK PROPERTY, N. CENTERVILLE RD.": 761628,
+        "CHOWKEEBIN NENE NEAR MAGNOLIA DR.": 761602,
+        "WAKULLA SPRINGS STATE PARK": 761625,
+        "ST. MARKS RIVER @ SAN MARCOS DE APALACHEE S.P.": 762890,
+        "RIVER SINK TOWER - RAIN": 762899,
+        "District HQ Rain": 760892
+      } */
 
 
