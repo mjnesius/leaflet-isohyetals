@@ -86,9 +86,9 @@ tr:nth-child(even) {
   document.getElementById('info-pane').innerHTML = '';
 
   var map = L.map('map').setView([30.45, -84.31], 13);
-
-  L.esri.basemapLayer('DarkGray').addTo(map);
-  var gaugeLayer1 = L.geoJSON().addTo(map);
+  var rainDataDict = {};
+  var startDate, endDate, globalGeoJ;
+  var gaugeLayer = L.geoJSON().addTo(map);
   var gpService = L.esri.GP.service({
     url: "https://cotinter.leoncountyfl.gov/cotinter/rest/services/GeoProcessing/FetchRainData/GPServer/FetchRainData",
     useCors:false,
@@ -98,16 +98,17 @@ tr:nth-child(even) {
   });
   var gpTask = gpService.createTask();
 
+  L.esri.basemapLayer('DarkGray').addTo(map);
   gpTask.setParam('Start_Date', 1575194400000);
   gpTask.setParam('End_Date', 1575207000000);
   gpTask.setOutputParam('Output_String');
-
   
   document.getElementById('btnRun').addEventListener("click", () =>{
     document.getElementById('info-pane').innerHTML = 'fetching rain data, this takes 2-3 minutes...';
     console.log("click");
-    var startDate = new Date(document.getElementById("start").value).toLocaleString("en-US", { timeZone: "America/New_York" });;
-    var endDate = new Date(document.getElementById("end").value).toLocaleString("en-US", { timeZone: "America/New_York" });
+    rainDataDict = {};
+    startDate = new Date(document.getElementById("start").value).toLocaleString("en-US", { timeZone: "America/New_York" });
+    endDate = new Date(document.getElementById("end").value).toLocaleString("en-US", { timeZone: "America/New_York" });
     console.log(startDate + " to " + endDate);
     if (startDate === "" || endDate === "") {
       alert("Please enter a start and end date")
@@ -117,75 +118,120 @@ tr:nth-child(even) {
       alert("Please enter a start date that is before or equal to the end date")
       return;
     }
-    gpTask.run( (error, response, raw) => {
-      console.log("task ran");
+    var taskPromise = new Promise((resolve, reject) => {
+      gpTask.run((error, response, raw) => {
+        console.log("task ran");
         //   it is pinging this address for the result
         //https://cotinter.leoncountyfl.gov/cotinter/rest/services/GeoProcessing/FetchRainData/GPServer/FetchRainData/jobs/j3ad9081eed61437b88728aa0834b7412?f=json
         if (error) {
           console.log("error: " + error);
           document.getElementById('info-pane').innerHTML = JSON.stringify(error);
-          return;
+          reject(error);
         }
         document.getElementById('info-pane').innerHTML = "response: " + JSON.stringify(response.value) + "\n\n" + "raw: " + JSON.stringify(raw.value);
-        return raw.value;
+        
+        resolve(raw.value);
         //the async task then fetches .../results/{setOutputParam}?f=json
         //https://cotinter.leoncountyfl.gov/cotinter/rest/services/GeoProcessing/FetchRainData/GPServer/FetchRainData/jobs/j5d13c9fd386648a3867e1eb675d39889/results/undefined?results%2FOutput_String=undefined&f=json
 
       })
+    })
+    taskPromise.then(data =>{
+      rainDataDict = {...data[0], ...data[1]};
+      gaugeLayer.remove();
+      console.log("task promise's globalGeoJ " + JSON.stringify(globalGeoJ));
+      console.log("task promise's data dict: " + JSON.stringify(rainDataDict));
+      gaugeLayer = L.geoJSON(globalGeoJ, {
+        onEachFeature: onEachFeature
+      }).addTo(map);
+    })
+    
   }
     
   );
-  const geojStationFeatures = fetch("../stationsWGS84.js")
+  const geojStationFeatures =  fetch("../stationsWGS84.json")
     .then((res) => res.json())
     .then( geojStationFeatures =>{
         console.log(geojStationFeatures);
+        globalGeoJ = geojStationFeatures
         //var gaugeLayer = L.geoJSON().addTo(map);
         //var geojson = L.geoJSON(geojStationFeatures);
-        console.log(geojStationFeatures);
-        gaugeLayer1.addData(geojStationFeatures);
-        gaugeLayer1.eachLayer((layer)=>{
-          onEachFeature(layer);
-        })
-        // var gaugeLayer = L.geoJSON(geojStationFeatures, {
-        //   onEachFeature: onEachFeature
-        // }).addTo(map);
-
-        //gaugeLayer.addData(geojson);
+        gaugeLayer = L.geoJSON(geojStationFeatures, {
+         onEachFeature: onEachFeature
+       }).addTo(map);
         
+    });
+    
+  function onEachFeature(feature, layer) {
+      //console.log("on each feature, layer: " + JSON.stringify(layer));
+      //console.log("on each feature, feature: " + JSON.stringify(feature));
+    if (Object.keys(rainDataDict).length > 0 && layer.feature.properties) {
+      feature.properties.Total_Rain = rainDataDict[feature.properties.Station_Name] ? +rainDataDict[feature.properties.Station_Name].toFixed(2) : null;
+      console.log(feature.properties.Station_Name + "'s new rain total: " + rainDataDict[feature.properties.Station_Name] + " == " + feature.properties.Total_Rain)
+      var Date_Range = startDate + " to " + endDate;
+      var popup = `<h3>${feature.properties.Station_Name}</h2>
+              <table>
+                <tr>
+                  <th><b>Total_Rain</b></th>
+                  <th>${!(feature.properties.Total_Rain === null) ? (feature.properties.Total_Rain + '"') : "null"}</th>
+                </tr>
+                <tr>
+                  <td><b>NWF_ID</b></td>
+                  <td>${feature.properties.NWF_ID ? feature.properties.NWF_ID : "null"}</td>
+                </tr>
+                <tr>
+                  <td><b>SiteID</b></td>
+                  <td>${feature.properties.SiteID ? layer.feature.properties.SiteID : "null"}</td>
+                </tr>
+                <tr>
+                  <td><b>Date_Range</b></td>
+                  <td>${Date_Range}</td>
+                </tr>
+              </table>`
+      layer.bindPopup(popup);
+    }
+    else if (layer.feature.properties) {
+      var popup = `<h3>${layer.feature.properties.Station_Name}</h2>
+              <table>
+                <tr>
+                  <th><b>Total_Rain</b></th>
+                  <th>${layer.feature.properties.Total_Rain ? layer.feature.properties.Total_Rain : "null"}</th>
+                </tr>
+                <tr>
+                  <td><b>NWF_ID</b></td>
+                  <td>${layer.feature.properties.NWF_ID ? layer.feature.properties.NWF_ID : "null"}</td>
+                </tr>
+                <tr>
+                  <td><b>SiteID</b></td>
+                  <td>${layer.feature.properties.SiteID ? layer.feature.properties.SiteID : "null"}</td>
+                </tr>
+              </table>`
+      layer.bindPopup(popup);
+    }
+  }
+  //
+  function decycle(obj, stack = []) { //https://stackoverflow.com/questions/9382167/serializing-object-that-contains-cyclic-object-value
+    if (!obj || typeof obj !== 'object')
+        return obj;
+    
+    if (stack.includes(obj))
+        return null;
 
-        var oneRainDataDict = {};
-        var nwfwmdDataDict = {};
+    let s = stack.concat([obj]);
 
-        function onEachFeature(layer) {
-
-          if (layer.feature.properties) {
-            var popup = `<h3>${layer.feature.properties.Station_Name}</h2>
-            <table>
-              <tr>
-                <th><b>Total_Rain</b></th>
-                <th>${layer.feature.properties.Total_Rain ? layer.feature.properties.Total_Rain : "null"}</th>
-              </tr>
-              <tr>
-                <td><b>NWF_ID</b></td>
-                <td>${layer.feature.properties.NWF_ID ? layer.feature.properties.NWF_ID : "null"}</td>
-              </tr>
-              <tr>
-                <td><b>SiteID</b></td>
-                <td>${layer.feature.properties.SiteID ? layer.feature.properties.SiteID : "null"}</td>
-              </tr>
-            </table>`
-            layer.bindPopup(popup);
-          }
-        }
-
-      })
+    return Array.isArray(obj)
+        ? obj.map(x => decycle(x, s))
+        : Object.fromEntries(
+            Object.entries(obj)
+                .map(([k, v]) => [k, decycle(v, s)]));
+}
 
 </script>
 
 </body>
 </html>
 
-      /* const oneRainGetDict = {
+      <!-- /* const oneRainGetDict = {
       "STREETS AND DRAINAGE (CITY ID# 300)": ["5", "1"],
       "JAKE GAITHER GOLF COURSE (CITY ID# 500)": ["2", "1"],
       "TALLAHASSEE CITY HALL (CITY ID# 100)": ["4", "1"],
@@ -219,6 +265,6 @@ tr:nth-child(even) {
         "ST. MARKS RIVER @ SAN MARCOS DE APALACHEE S.P.": 762890,
         "RIVER SINK TOWER - RAIN": 762899,
         "District HQ Rain": 760892
-      } */
+      } */ -->
 
 
