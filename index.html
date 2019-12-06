@@ -99,17 +99,26 @@ tr:nth-child(even) {
   var gpTask = gpService.createTask();
 
   L.esri.basemapLayer('DarkGray').addTo(map);
-  gpTask.setParam('Start_Date', 1575194400000);
-  gpTask.setParam('End_Date', 1575207000000);
   gpTask.setOutputParam('Output_String');
   
   document.getElementById('btnRun').addEventListener("click", () =>{
     document.getElementById('info-pane').innerHTML = 'fetching rain data, this takes 2-3 minutes...';
     console.log("click");
     rainDataDict = {};
-    startDate = new Date(document.getElementById("start").value).toLocaleString("en-US", { timeZone: "America/New_York" });
-    endDate = new Date(document.getElementById("end").value).toLocaleString("en-US", { timeZone: "America/New_York" });
-    console.log(startDate + " to " + endDate);
+    // note: need to set start hh:mm to 00:00 and enddate hh:mm to 23:59
+    var offset = new Date().getTimezoneOffset(); //returns diff (number of minutes) between local and utc
+    startDate = new Date(document.getElementById("start").value);//.toLocaleString("en-US", { timeZone: "America/New_York" });
+    endDate = new Date(document.getElementById("end").value);//.toLocaleString("en-US", { timeZone: "America/New_York" });
+    console.log(startDate + " to " + endDate );
+    startDate.setMinutes(startDate.getMinutes() + offset);
+    endDate.setMinutes(endDate.getMinutes() + offset);
+    console.log(startDate + " to " + endDate + " offset: " + offset);
+    //Date.UTC(year[, month[, day[, hour[, minute[, second[, millisecond]]]]]])
+    //var startUTC =  Date.UTC(startDate.getUTCFullYear(), startDate.getUTCMonth(), startDate.getUTCDate(), 0);
+    //var endUTC =  Date.UTC(endDate.getUTCFullYear(), endDate.getUTCMonth(), endDate.getUTCDate(), 23,59);
+    gpTask.setParam('Start_Date', startDate.valueOf());//1575194400000);
+    gpTask.setParam('End_Date', endDate.valueOf());//1575207000000);
+    console.log(startDate.valueOf() + " to " + endDate.valueOf());
     if (startDate === "" || endDate === "") {
       alert("Please enter a start and end date")
       return;
@@ -127,6 +136,7 @@ tr:nth-child(even) {
           console.log("error: " + error);
           document.getElementById('info-pane').innerHTML = JSON.stringify(error);
           reject(error);
+          return;
         }
         document.getElementById('info-pane').innerHTML = "response: " + JSON.stringify(response.value) + "\n\n" + "raw: " + JSON.stringify(raw.value);
         
@@ -135,6 +145,7 @@ tr:nth-child(even) {
         //https://cotinter.leoncountyfl.gov/cotinter/rest/services/GeoProcessing/FetchRainData/GPServer/FetchRainData/jobs/j5d13c9fd386648a3867e1eb675d39889/results/undefined?results%2FOutput_String=undefined&f=json
 
       })
+      return;
     })
     taskPromise.then(data =>{
       rainDataDict = {...data[0], ...data[1]};
@@ -166,7 +177,9 @@ tr:nth-child(even) {
       //console.log("on each feature, layer: " + JSON.stringify(layer));
       //console.log("on each feature, feature: " + JSON.stringify(feature));
     if (Object.keys(rainDataDict).length > 0 && layer.feature.properties) {
-      feature.properties.Total_Rain = rainDataDict[feature.properties.Station_Name] ? +rainDataDict[feature.properties.Station_Name].toFixed(2) : null;
+      feature.properties.Total_Rain = (rainDataDict[feature.properties.Station_Name] || 
+        rainDataDict[feature.properties.Station_Name] === 0) ? 
+          +rainDataDict[feature.properties.Station_Name].toFixed(2) : null;
       console.log(feature.properties.Station_Name + "'s new rain total: " + rainDataDict[feature.properties.Station_Name] + " == " + feature.properties.Total_Rain)
       var Date_Range = startDate + " to " + endDate;
       var popup = `<h3>${feature.properties.Station_Name}</h2>
