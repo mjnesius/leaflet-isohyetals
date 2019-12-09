@@ -16,10 +16,30 @@
   <script src="https://unpkg.com/esri-leaflet-gp@2.0.3"></script>
 
   <!--  d3 contour library ==> creates a d3 global with a contours() method-->
+  <!-- d3 example https://github.com/axismaps/contours-->
+  <!-- d3 examples https://observablehq.com/collection/@d3/d3-contour -->
+  <!-- api ref https://github.com/d3/d3/blob/master/API.md-->
   <script src="https://d3js.org/d3-contour.v1.min.js"></script>
 
   <!--  turf interpolation library ==> creates a turf global. has featureCollection helper and isobands() method-->
+  <!-- 
+        var bbox = turf.bbox(geoJSON);// Returns a rectangle 
+        var bboxPolygon = turf.bboxPolygon(bbox); // converts bbox into a minimal polygon
+        var options = {gridType: 'points', property: 'Total_Rain', units: 'miles'};
+        var grid = turf.interpolate(knownPointsFeatureCollection, 0.25, options); //uses IDW, returns a grid based on units/options
+        var contourBreaks: inclusiveRange(0, 30, 0.2);
+        var lines = turf.isolines(pointGrid, contourBreaks, {zProperty: 'Total_Rain'});
+        var curved = turf.bezierSpline(<feature Turf LineString>);
+  -->
+  <!-- Leaflet.TextPath plugin for contour labels  <script src="leaflet.textpath.js"></script>
+     L.geoJson(data, {
+        onEachFeature: function (feature, layer) {
+            layer.setText(feature.properties.label, {repeat: true, attributes: {fill: 'red'}});
+        }
+    }).addTo(map);
+  -->
   <script src='https://npmcdn.com/@turf/turf/turf.min.js'></script>
+  <script src="leaflet.textpath.js"></script>
         
 <style>
     .date {left: 40%;
@@ -89,6 +109,7 @@ tr:nth-child(even) {
   var rainDataDict = {};
   var startDate, endDate, globalGeoJ;
   var gaugeLayer = L.geoJSON().addTo(map);
+  var contours = L.geoJSON().addTo(map);
   var gpService = L.esri.GP.service({
     url: "https://cotinter.leoncountyfl.gov/cotinter/rest/services/GeoProcessing/FetchRainData/GPServer/FetchRainData",
     useCors:false,
@@ -103,19 +124,15 @@ tr:nth-child(even) {
   
   document.getElementById('btnRun').addEventListener("click", () =>{
     document.getElementById('info-pane').innerHTML = 'fetching rain data, this takes 2-3 minutes...';
-    console.log("click");
     rainDataDict = {};
     // note: need to set start hh:mm to 00:00 and enddate hh:mm to 23:59
-    var offset = new Date().getTimezoneOffset(); //returns diff (number of minutes) between local and utc
+    var offset = new Date().getTimezoneOffset(document.getElementById("end").valu); //returns diff (number of minutes) between local and utc
     startDate = new Date(document.getElementById("start").value);//.toLocaleString("en-US", { timeZone: "America/New_York" });
     endDate = new Date(document.getElementById("end").value);//.toLocaleString("en-US", { timeZone: "America/New_York" });
     console.log(startDate + " to " + endDate );
     startDate.setMinutes(startDate.getMinutes() + offset);
     endDate.setMinutes(endDate.getMinutes() + offset);
     console.log(startDate + " to " + endDate + " offset: " + offset);
-    //Date.UTC(year[, month[, day[, hour[, minute[, second[, millisecond]]]]]])
-    //var startUTC =  Date.UTC(startDate.getUTCFullYear(), startDate.getUTCMonth(), startDate.getUTCDate(), 0);
-    //var endUTC =  Date.UTC(endDate.getUTCFullYear(), endDate.getUTCMonth(), endDate.getUTCDate(), 23,59);
     gpTask.setParam('Start_Date', startDate.valueOf());//1575194400000);
     gpTask.setParam('End_Date', endDate.valueOf());//1575207000000);
     console.log(startDate.valueOf() + " to " + endDate.valueOf());
@@ -147,19 +164,71 @@ tr:nth-child(even) {
       })
       return;
     })
-    taskPromise.then(data =>{
-      rainDataDict = {...data[0], ...data[1]};
-      gaugeLayer.remove();
-      console.log("task promise's globalGeoJ " + JSON.stringify(globalGeoJ));
-      console.log("task promise's data dict: " + JSON.stringify(rainDataDict));
-      gaugeLayer = L.geoJSON(globalGeoJ, {
-        onEachFeature: onEachFeature
-      }).addTo(map);
+    var contourPromise = new Promise ( (resolve, reject) => {
+        taskPromise.then(data =>{
+        rainDataDict = {...data[0], ...data[1]};
+        gaugeLayer.remove();
+        console.log("task promise's globalGeoJ " + JSON.stringify(globalGeoJ));
+        console.log("task promise's data dict: " + JSON.stringify(rainDataDict));
+        gaugeLayer = L.geoJSON(globalGeoJ, {
+          onEachFeature: onEachFeature,
+          filter: (feature, layer) =>{
+            return (rainDataDict[feature.properties.Station_Name] === 0 || rainDataDict[feature.properties.Station_Name] > 0);
+            }
+          }).addTo(map);
+          resolve();  
+        });
+        
+      });
+    contourPromise.then(() =>{
+      try{
+        var bbox = turf.bbox(globalGeoJ);// Returns a rectangle 
+        console.log("bbox: " + JSON.stringify(bbox));
+        var bboxPolygon = turf.bboxPolygon(bbox); // converts bbox into a minimal polygon
+        console.log("bboxPolygon: " + JSON.stringify(bboxPolygon));
+        var options = {gridType: 'point', property: 'Total_Rain', units: 'miles'};
+        var features = globalGeoJ.features.filter( feature => {
+          if (feature.properties.Station_Name in rainDataDict && rainDataDict[feature.properties.Station_Name] !== null ) {
+            feature.properties.Total_Rain = rainDataDict[feature.properties.Station_Name];
+            return  feature
+          };
+        });
+        
+        var featureCollection = turf.featureCollection(features);
+        //console.log("featureCollection for interpolate: " + JSON.stringify(decycle(featureCollection)));
+        var grid = turf.interpolate(featureCollection, 0.25, options); //uses IDW, returns a grid (featureCollection) based on units/options
+        //console.log("idw grid: " + JSON.stringify(grid));
+        var contourBreaks= inclusiveRange(0, 30, 0.2);
+        var lines = turf.isolines(grid, contourBreaks, {zProperty: 'Total_Rain'}); //returns a FeatureCollection of MultiLineString
+        //console.log("lines obj for  bezierSpline: " + JSON.stringify(lines));
+        turf.geomEach(lines, function (currentGeometry, featureIndex, featureProperties, featureBBox, featureId) {
+            //console.log("  featureIndex: " + featureIndex + "  currentGeometry: " + JSON.stringify(currentGeometry));
+            currentGeometry['coordinates'] = currentGeometry['coordinates'].map( line => {
+              var linestring = turf.lineString(line); //returns a linestring
+              smoothedLine = turf.bezierSpline(linestring); //returns a linestring - curved line
+              //console.log('  splines smoothedLine: ' + JSON.stringify(smoothedLine));
+              return smoothedLine.geometry['coordinates'];
+            })
+            //console.log("**modified  currentGeometry: " + JSON.stringify(currentGeometry));
+          });
+        //console.log("modified lines obj after bezierSpline: " + JSON.stringify(lines));
+        contours.remove(); 
+        contours = L.geoJSON(lines, {
+          onEachFeature: function (feature, layer) {
+            layer.setText(("         " + feature.properties['Total_Rain'].toFixed(2) + "         "), {repeat: true, attributes: {fill: 'white', 'font-weight': 'bold', 'font-size': '22','dx': '400%'}});
+          },
+          style: {
+            color: "#ff0000",
+            "weight": 5
+          }
+        }).addTo(map);
+        //contours = L.polyline(lines, {color: 'red'}).addTo(map);
+      } catch(e) {
+        console.error(e);
+      }
+      
     })
-    
-  }
-    
-  );
+  });
   const geojStationFeatures =  fetch("../stationsWGS84.json")
     .then((res) => res.json())
     .then( geojStationFeatures =>{
@@ -179,7 +248,7 @@ tr:nth-child(even) {
     if (Object.keys(rainDataDict).length > 0 && layer.feature.properties) {
       feature.properties.Total_Rain = (rainDataDict[feature.properties.Station_Name] || 
         rainDataDict[feature.properties.Station_Name] === 0) ? 
-          +rainDataDict[feature.properties.Station_Name].toFixed(2) : null;
+          + rainDataDict[feature.properties.Station_Name].toFixed(2) : null;
       console.log(feature.properties.Station_Name + "'s new rain total: " + rainDataDict[feature.properties.Station_Name] + " == " + feature.properties.Total_Rain)
       var Date_Range = startDate + " to " + endDate;
       var popup = `<h3>${feature.properties.Station_Name}</h2>
@@ -222,7 +291,10 @@ tr:nth-child(even) {
       layer.bindPopup(popup);
     }
   }
-  //
+
+  function inclusiveRange(start, end, step) {
+    return Array.from(Array.from(Array(Math.ceil((end-start+1)/step)).keys()), x => start+ x*step);
+  }
   function decycle(obj, stack = []) { //https://stackoverflow.com/questions/9382167/serializing-object-that-contains-cyclic-object-value
     if (!obj || typeof obj !== 'object')
         return obj;
