@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset=utf-8 />
-  <title>isohyetals</title>
+  <title>COT Stormwater: Isohyetals</title>
   <meta name='viewport' content='initial-scale=1,maximum-scale=1,user-scalable=no' />
 
   <!-- Load Leaflet from CDN-->
@@ -15,34 +15,14 @@
   <!-- Esri Leaflet GP -->
   <script src="https://unpkg.com/esri-leaflet-gp@2.0.3"></script>
 
-  <!--  d3 contour library ==> creates a d3 global with a contours() method-->
-  <!-- d3 example https://github.com/axismaps/contours-->
-  <!-- d3 examples https://observablehq.com/collection/@d3/d3-contour -->
-  <!-- api ref https://github.com/d3/d3/blob/master/API.md-->
-  <script src="https://d3js.org/d3-contour.v1.min.js"></script>
-
   <!--  turf interpolation library ==> creates a turf global. has featureCollection helper and isobands() method-->
-  <!-- 
-        var bbox = turf.bbox(geoJSON);// Returns a rectangle 
-        var bboxPolygon = turf.bboxPolygon(bbox); // converts bbox into a minimal polygon
-        var options = {gridType: 'points', property: 'Total_Rain', units: 'miles'};
-        var grid = turf.interpolate(knownPointsFeatureCollection, 0.25, options); //uses IDW, returns a grid based on units/options
-        var contourBreaks: inclusiveRange(0, 30, 0.2);
-        var lines = turf.isolines(pointGrid, contourBreaks, {zProperty: 'Total_Rain'});
-        var curved = turf.bezierSpline(<feature Turf LineString>);
-  -->
-  <!-- Leaflet.TextPath plugin for contour labels  <script src="leaflet.textpath.js"></script>
-     L.geoJson(data, {
-        onEachFeature: function (feature, layer) {
-            layer.setText(feature.properties.label, {repeat: true, attributes: {fill: 'red'}});
-        }
-    }).addTo(map);
-  -->
+  <!-- Leaflet.TextPath plugin for svg contour labels -->
   <script src='https://npmcdn.com/@turf/turf/turf.min.js'></script>
   <script src="leaflet.textpath.js"></script>
         
 <style>
-    .date {left: 40%;
+  .date {
+    left: 40%;
     vertical-align: top;
     text-align: center;
     position: absolute;
@@ -51,44 +31,43 @@
     z-index: 999;
     white-space: pre-wrap;
     margin-top: 10px
+  }
+  body {
+    margin:0;
+    padding:0;
+  }
 
-}
-    body {
-      margin:0;
-      padding:0;
-    }
+  #map {
+    position: absolute;
+    top:0;
+    bottom:0;
+    right:0;left:0;
+  }
 
-    #map {
-      position: absolute;
-      top:0;
-      bottom:0;
-      right:0;left:0;
-    }
+  #info-pane {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    z-index: 1000;
+    padding: 1em;
+    background: white;
+    max-width: 30%;
+  }
+  table {
+    font-family: arial, sans-serif;
+    border-collapse: collapse;
+    width: 100%;
+  }
+  td, th {
+    border: 1px solid #dddddd;
+    text-align: left;
+    padding: 8px;
+  }
 
-    #info-pane {
-      position: absolute;
-      top: 10px;
-      right: 10px;
-      z-index: 1000;
-      padding: 1em;
-      background: white;
-      max-width: 30%;
-    }
-    table {
-  font-family: arial, sans-serif;
-  border-collapse: collapse;
-  width: 100%;
-}
-td, th {
-  border: 1px solid #dddddd;
-  text-align: left;
-  padding: 8px;
-}
-
-tr:nth-child(even) {
-  background-color: #dddddd;
-}
-  </style>
+  tr:nth-child(even) {
+    background-color: #dddddd;
+  }
+</style>
 </head>
 <body>
 <div class="date" >
@@ -99,12 +78,11 @@ tr:nth-child(even) {
     <button id="btnRun"style="height: 22px; margin-left: 5px; text-align: center" type="button"> Submit
  </div>
 <div id="map"></div>
-<div id="info-pane" class="leaflet-bar">
-</div>
+  <div id="info-pane" style="display: none"class="leaflet-bar">
+  </div>
 
 <script>
-  document.getElementById('info-pane').innerHTML = '';
-
+  var btnClose = `<button id="closeButton" style="background-color: #ffffff; padding:2px 5px; position:absolute; top:0; right:0;" onclick="document.getElementById('info-pane').style.display = 'none';">X</button>`;
   var map = L.map('map').setView([30.45, -84.31], 13);
   var rainDataDict = {};
   var startDate, endDate, globalGeoJ;
@@ -121,55 +99,73 @@ tr:nth-child(even) {
 
   L.esri.basemapLayer('DarkGray').addTo(map);
   gpTask.setOutputParam('Output_String');
-  
-  document.getElementById('btnRun').addEventListener("click", () =>{
-    document.getElementById('info-pane').innerHTML = 'fetching rain data, this takes 2-3 minutes...';
+
+  document.getElementById('btnRun').addEventListener("click", () => {
+    document.getElementById('info-pane').style.display = 'block';
+    document.getElementById('info-pane').innerHTML = btnClose + 'fetching rain data, this takes 2-3 minutes...';
     rainDataDict = {};
-    // note: need to set start hh:mm to 00:00 and enddate hh:mm to 23:59
-    var offset = new Date().getTimezoneOffset(document.getElementById("end").valu); //returns diff (number of minutes) between local and utc
+
+    var offsetStart = new Date().getTimezoneOffset(document.getElementById("start").value);
+    var offsetEnd = new Date().getTimezoneOffset(document.getElementById("end").value); //returns diff (number of minutes) between local and utc
     startDate = new Date(document.getElementById("start").value);//.toLocaleString("en-US", { timeZone: "America/New_York" });
     endDate = new Date(document.getElementById("end").value);//.toLocaleString("en-US", { timeZone: "America/New_York" });
+    //adjust offset for daylight savings time
+    if (endDate.dst()){
+      offsetEnd = offsetEnd - 60;
+    }
+    if (startDate.dst()){
+      offsetStart = offsetStart - 60;
+    }
+    startDate.setMinutes(startDate.getMinutes() + offsetStart);
+    endDate.setMinutes(endDate.getMinutes() + offsetEnd);
+    console.log(new Date(document.getElementById("start").value).toLocaleString("en-US", { timeZone: "America/New_York" }) + " to " 
+      + new Date(document.getElementById("end").value).toLocaleString("en-US", { timeZone: "America/New_York" }) );
     console.log(startDate + " to " + endDate );
-    startDate.setMinutes(startDate.getMinutes() + offset);
-    endDate.setMinutes(endDate.getMinutes() + offset);
-    console.log(startDate + " to " + endDate + " offset: " + offset);
+
     gpTask.setParam('Start_Date', startDate.valueOf());//1575194400000);
     gpTask.setParam('End_Date', endDate.valueOf());//1575207000000);
-    console.log(startDate.valueOf() + " to " + endDate.valueOf());
+
     if (startDate === "" || endDate === "") {
-      alert("Please enter a start and end date")
+      alert("Please enter a start and end date");
+      document.getElementById('info-pane').style.display = 'none';
       return;
     }
-    if (startDate > endDate) {
-      alert("Please enter a start date that is before or equal to the end date")
+    if (endDate - startDate > 604800000) {
+      alert("Please enter a date range that is 1 week or less");
+      document.getElementById('info-pane').style.display = 'none';
       return;
     }
+    if ( startDate > endDate ) {
+      alert("Please enter a start date that is before or equal to the end date");
+      document.getElementById('info-pane').style.display = 'none';
+      return;
+    }
+
+    // run the geoprocessing task, resolve the promise when it completes
     var taskPromise = new Promise((resolve, reject) => {
       gpTask.run((error, response, raw) => {
+        document.getElementById('info-pane').style.display = 'block';
         console.log("task ran");
-        //   it is pinging this address for the result
-        //https://cotinter.leoncountyfl.gov/cotinter/rest/services/GeoProcessing/FetchRainData/GPServer/FetchRainData/jobs/j3ad9081eed61437b88728aa0834b7412?f=json
+        
         if (error) {
           console.log("error: " + error);
-          document.getElementById('info-pane').innerHTML = JSON.stringify(error);
+          document.getElementById('info-pane').innerHTML = btnClose + JSON.stringify(error);
           reject(error);
           return;
         }
-        document.getElementById('info-pane').innerHTML = "response: " + JSON.stringify(response.value) + "\n\n" + "raw: " + JSON.stringify(raw.value);
+        document.getElementById('info-pane').innerHTML = btnClose + "fetch complete: " + startDate + " to " + endDate +"\n\n" + JSON.stringify(raw.value);
+        console.log("data retrieved: " + JSON.stringify(raw.value));
         
         resolve(raw.value);
-        //the async task then fetches .../results/{setOutputParam}?f=json
-        //https://cotinter.leoncountyfl.gov/cotinter/rest/services/GeoProcessing/FetchRainData/GPServer/FetchRainData/jobs/j5d13c9fd386648a3867e1eb675d39889/results/undefined?results%2FOutput_String=undefined&f=json
-
       })
       return;
     })
+
+    // process the rain data after the geoprocessing task completes. update the layer popups, and the global rainDataDict object
     var contourPromise = new Promise ( (resolve, reject) => {
         taskPromise.then(data =>{
         rainDataDict = {...data[0], ...data[1]};
         gaugeLayer.remove();
-        console.log("task promise's globalGeoJ " + JSON.stringify(globalGeoJ));
-        console.log("task promise's data dict: " + JSON.stringify(rainDataDict));
         gaugeLayer = L.geoJSON(globalGeoJ, {
           onEachFeature: onEachFeature,
           filter: (feature, layer) =>{
@@ -180,12 +176,13 @@ tr:nth-child(even) {
         });
         
       });
+    
+    // after the global rainDataDict object updates, perform the IDW interpolation
     contourPromise.then(() =>{
+      var rainVal, modulo;
       try{
         var bbox = turf.bbox(globalGeoJ);// Returns a rectangle 
-        console.log("bbox: " + JSON.stringify(bbox));
         var bboxPolygon = turf.bboxPolygon(bbox); // converts bbox into a minimal polygon
-        console.log("bboxPolygon: " + JSON.stringify(bboxPolygon));
         var options = {gridType: 'point', property: 'Total_Rain', units: 'miles'};
         var features = globalGeoJ.features.filter( feature => {
           if (feature.properties.Station_Name in rainDataDict && rainDataDict[feature.properties.Station_Name] !== null ) {
@@ -195,61 +192,78 @@ tr:nth-child(even) {
         });
         
         var featureCollection = turf.featureCollection(features);
-        //console.log("featureCollection for interpolate: " + JSON.stringify(decycle(featureCollection)));
-        var grid = turf.interpolate(featureCollection, 0.25, options); //uses IDW, returns a grid (featureCollection) based on units/options
-        //console.log("idw grid: " + JSON.stringify(grid));
+        var grid = turf.interpolate(featureCollection, 0.1, options); //uses IDW, returns a grid (featureCollection) based on units/options
         var contourBreaks= inclusiveRange(0, 30, 0.2);
         var lines = turf.isolines(grid, contourBreaks, {zProperty: 'Total_Rain'}); //returns a FeatureCollection of MultiLineString
-        //console.log("lines obj for  bezierSpline: " + JSON.stringify(lines));
+        //smooth each line in the MultiLineStrings
         turf.geomEach(lines, function (currentGeometry, featureIndex, featureProperties, featureBBox, featureId) {
-            //console.log("  featureIndex: " + featureIndex + "  currentGeometry: " + JSON.stringify(currentGeometry));
             currentGeometry['coordinates'] = currentGeometry['coordinates'].map( line => {
               var linestring = turf.lineString(line); //returns a linestring
-              smoothedLine = turf.bezierSpline(linestring); //returns a linestring - curved line
-              //console.log('  splines smoothedLine: ' + JSON.stringify(smoothedLine));
+              smoothedLine = turf.bezierSpline(linestring); //returns a linestring - curved line;
               return smoothedLine.geometry['coordinates'];
             })
-            //console.log("**modified  currentGeometry: " + JSON.stringify(currentGeometry));
           });
-        //console.log("modified lines obj after bezierSpline: " + JSON.stringify(lines));
+
         contours.remove(); 
+
+        //create and style the contour layer
         contours = L.geoJSON(lines, {
+          //set the contour labels. creates SVG labels using leaflet.textpath.js
           onEachFeature: function (feature, layer) {
-            layer.setText(("         " + feature.properties['Total_Rain'].toFixed(2) + "         "), {repeat: true, attributes: {fill: 'white', 'font-weight': 'bold', 'font-size': '22','dx': '400%'}});
+            rainVal = feature.properties['Total_Rain'].toFixed(2);
+            modulo = feature.properties['Total_Rain'] % 1;
+            switch (modulo) {
+              case 0 :
+                layer.setText(' '.repeat(5) + rainVal + ' '.repeat(5), {
+                  repeat: true, offset: 6, attributes: {fill: 'white', 'font-weight': 'bold', 'font-size': '22'}
+                });
+                break;
+              default:
+                layer.setText(' '.repeat(5) + rainVal + ' '.repeat(5), {
+                  repeat: true, offset: 8, attributes: {fill: 'white', 'font-weight': 'bold', 'font-size': '18'}
+                });
+                break;
+            } 
+            
           },
-          style: {
-            color: "#ff0000",
-            "weight": 5
+          style: (feature) => {
+            rainVal = feature.properties['Total_Rain'].toFixed(2);
+            modulo = feature.properties['Total_Rain'] % 1;
+            switch (modulo) {
+              case 0:
+                return {color: "#ff0000", "weight": 5 };
+              default:
+                return {color: "#ff0000", "weight": 3, 'dashArray': '15,5,3,5,3,5' };
+            }
           }
         }).addTo(map);
-        //contours = L.polyline(lines, {color: 'red'}).addTo(map);
+
       } catch(e) {
         console.error(e);
+        document.getElementById('info-pane').style.display = 'block';
+        document.getElementById('info-pane').innerHTML = btnClose + JSON.stringify(error);
       }
       
     })
   });
+  // fetch the json template
   const geojStationFeatures =  fetch("../stationsWGS84.json")
     .then((res) => res.json())
     .then( geojStationFeatures =>{
         console.log(geojStationFeatures);
         globalGeoJ = geojStationFeatures
-        //var gaugeLayer = L.geoJSON().addTo(map);
-        //var geojson = L.geoJSON(geojStationFeatures);
         gaugeLayer = L.geoJSON(geojStationFeatures, {
          onEachFeature: onEachFeature
        }).addTo(map);
         
     });
-    
+  
+  // function for creating the popups
   function onEachFeature(feature, layer) {
-      //console.log("on each feature, layer: " + JSON.stringify(layer));
-      //console.log("on each feature, feature: " + JSON.stringify(feature));
     if (Object.keys(rainDataDict).length > 0 && layer.feature.properties) {
       feature.properties.Total_Rain = (rainDataDict[feature.properties.Station_Name] || 
         rainDataDict[feature.properties.Station_Name] === 0) ? 
           + rainDataDict[feature.properties.Station_Name].toFixed(2) : null;
-      console.log(feature.properties.Station_Name + "'s new rain total: " + rainDataDict[feature.properties.Station_Name] + " == " + feature.properties.Total_Rain)
       var Date_Range = startDate + " to " + endDate;
       var popup = `<h3>${feature.properties.Station_Name}</h2>
               <table>
@@ -291,25 +305,21 @@ tr:nth-child(even) {
       layer.bindPopup(popup);
     }
   }
-
+  // helper function for creating the contour intervals
   function inclusiveRange(start, end, step) {
     return Array.from(Array.from(Array(Math.ceil((end-start+1)/step)).keys()), x => start+ x*step);
   }
-  function decycle(obj, stack = []) { //https://stackoverflow.com/questions/9382167/serializing-object-that-contains-cyclic-object-value
-    if (!obj || typeof obj !== 'object')
-        return obj;
-    
-    if (stack.includes(obj))
-        return null;
 
-    let s = stack.concat([obj]);
+  //detect daylight savings time. functions are added to the Date prototype
+  Date.prototype.stdTimezoneOffset = function () {
+      var jan = new Date(this.getFullYear(), 0, 1);
+      var jul = new Date(this.getFullYear(), 6, 1);
+      return Math.max(jan.getTimezoneOffset(), jul.getTimezoneOffset());
+    }
 
-    return Array.isArray(obj)
-        ? obj.map(x => decycle(x, s))
-        : Object.fromEntries(
-            Object.entries(obj)
-                .map(([k, v]) => [k, decycle(v, s)]));
-}
+    Date.prototype.dst = function () {
+      return this.getTimezoneOffset() < this.stdTimezoneOffset();
+    }
 
 </script>
 

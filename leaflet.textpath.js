@@ -73,7 +73,7 @@ var PolylineTextPath = {
             return this;
         }
 
-        //text = text.replace(/ /g, '\u00A0');  // Non breakable spaces
+        text = text.replace(/ /g, '\u00A0');  // Non breakable spaces
         var id = 'pathdef-' + L.Util.stamp(this);
         var svg = this._map._renderer._container;
         this._path.setAttribute('id', id);
@@ -85,11 +85,12 @@ var PolylineTextPath = {
                 pattern.setAttribute(attr, options.attributes[attr]);
             pattern.appendChild(document.createTextNode(text));
             svg.appendChild(pattern);
-            var alength = pattern.getComputedTextLength();
+            var alength = pattern.getComputedTextLength() ;
             svg.removeChild(pattern);
 
             /* Create string as long as path */
-            text = new Array(Math.ceil(this._path.getTotalLength() / alength)).join(text);
+
+            text = new Array(Math.ceil(this._path.getTotalLength() / alength)).join(text + new Array(text.length).join(' '));
         }
 
         /* Put it along the path using textPath */
